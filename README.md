@@ -1,12 +1,36 @@
-# React + Vite
+# PomFlow 
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A minimal Pomodoro timer built with React and Tailwind CSS. Stay focused and boost your productivity with the proven Pomodoro Technique.
 
-Currently, two official plugins are available:
+## Features 
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Three Timer Modes**: Pomodoro (25min), Short Break (5min), Long Break (15min)
+- **Dark/Light Mode**: Toggle between themes for comfortable viewing
+- **Audio Notifications**: Get notified when your timer completes
+- **Clean Interface**: Minimal, distraction-free design
+- **Responsive Design**: Works on desktop and mobile devices
 
-## Expanding the ESLint configuration
+## Demo 
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+![PomFlow Screenshot](screenshot.png)
+*Coming soon*
+
+## Tech Stack 
+
+- **React** - UI framework
+- **Tailwind CSS** - Styling
+- **Vite** - Build tool
+- **Web Audio API** - Alarm sounds
+
+## Getting Started 🏁
+
+### Prerequisites
+- Node.js (v14 or higher)
+- npm or yarn
+
+### Installation
+
+1. Clone the repository
+```bash
+git clone https://github.com/Dan8a5/pomflow.git
+cd pomflow
