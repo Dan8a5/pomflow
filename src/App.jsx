@@ -15,6 +15,40 @@ function App() {
     longBreak: 15 * 60      // 15 minutes = 900 seconds
   }
 
+  // Function to play alarm sound when timer finishes
+  const playAlarm = () => {
+    // Create audio context for generating sound
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+    
+    // Play 3 beeps with different frequencies
+    const frequencies = [800, 1000, 1200] // High pitched beeps
+    
+    frequencies.forEach((freq, index) => {
+      setTimeout(() => {
+        // Create oscillator (sound generator)
+        const oscillator = audioContext.createOscillator()
+        const gainNode = audioContext.createGain()
+        
+        // Connect oscillator to gain (volume control) to speakers
+        oscillator.connect(gainNode)
+        gainNode.connect(audioContext.destination)
+        
+        // Set sound properties
+        oscillator.frequency.setValueAtTime(freq, audioContext.currentTime)
+        oscillator.type = 'sine' // Smooth sine wave sound
+        
+        // Set volume envelope (fade in and out for pleasant sound)
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime)
+        gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.1)
+        gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5)
+        
+        // Play the beep for 0.5 seconds
+        oscillator.start(audioContext.currentTime)
+        oscillator.stop(audioContext.currentTime + 0.5)
+      }, index * 600) // 600ms between each beep
+    })
+  }
+
   // Function to convert seconds into MM:SS format for display
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60)              // Get whole minutes
@@ -47,10 +81,10 @@ function App() {
         setTimeLeft(timeLeft => timeLeft - 1)
       }, 1000)
     } 
-    // If timer reaches 0, stop it automatically
+    // If timer reaches 0, stop it and play alarm
     else if (timeLeft === 0) {
       setIsRunning(false)
-      // TODO: Could add notification/sound here when timer finishes
+      playAlarm() // Play alarm sound when timer finishes
     }
 
     // Cleanup function - clears the interval when component unmounts or dependencies change
@@ -151,7 +185,15 @@ function App() {
             Long Break
           </button>
         </div>
-
+        {/* Test Alarm Button */}
+        <div className="mt-4">
+          <button 
+            onClick={playAlarm}
+            className="w-full py-2 px-4 rounded bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition-colors"
+          >
+            🔔 Test Alarm
+          </button>
+        </div>
         {/* Control Buttons */}
         <div className="flex gap-4">
           {/* Start/Pause button - changes text based on timer state */}
