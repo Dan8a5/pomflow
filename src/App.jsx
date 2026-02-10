@@ -1,224 +1,266 @@
-// Import React hooks - useState for state management, useEffect for side effects
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { Header } from './components/Header'
+import { Timer } from './components/Timer'
+import { TaskList } from './components/TaskList'
+import { Settings } from './components/Settings'
+import { useLocalStorage } from './hooks/useLocalStorage'
+import { playAlarm } from './utils/sounds'
+
+const DEFAULT_SETTINGS = {
+  pomodoro: 25,
+  shortBreak: 5,
+  longBreak: 15,
+  autoStartBreaks: false,
+  autoStartPomodoros: false,
+  longBreakInterval: 4,
+  alarmSound: 'digital',
+  alarmVolume: 0.5
+}
 
 function App() {
-  // State variables to manage the timer
-  const [mode, setMode] = useState('pomodoro')        // Current timer mode (pomodoro, shortBreak, longBreak)
-  const [timeLeft, setTimeLeft] = useState(25 * 60)   // Time remaining in seconds (starts at 25 minutes)
-  const [isRunning, setIsRunning] = useState(false)   // Whether the timer is currently running
-  const [isDarkMode, setIsDarkMode] = useState(false) // Whether dark mode is enabled
+  // Persisted state
+  const [settings, setSettings] = useLocalStorage('pomflow-settings', DEFAULT_SETTINGS)
+  const [tasks, setTasks] = useLocalStorage('pomflow-tasks', [])
+  const [session, setSession] = useLocalStorage('pomflow-session', {
+    completedPomodoros: 0,
+    activeTaskId: null
+  })
 
-  // Timer durations in seconds for each mode
-  const modes = {
-    pomodoro: 25 * 60,      // 25 minutes = 1500 seconds
-    shortBreak: 5 * 60,     // 5 minutes = 300 seconds
-    longBreak: 15 * 60      // 15 minutes = 900 seconds
-  }
+  // Local state
+  const [mode, setMode] = useState('pomodoro')
+  const [timeLeft, setTimeLeft] = useState(settings.pomodoro * 60)
+  const [isRunning, setIsRunning] = useState(false)
+  const [isDarkMode, setIsDarkMode] = useLocalStorage('pomflow-darkmode', true) // Default to dark
+  const [showSettings, setShowSettings] = useState(false)
 
-  // Function to play alarm sound when timer finishes
-  const playAlarm = () => {
-    // Create audio context for generating sound
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)()
-    
-    // Play 3 beeps with different frequencies
-    const frequencies = [800, 1000, 1200] // High pitched beeps
-    
-    frequencies.forEach((freq, index) => {
-      setTimeout(() => {
-        // Create oscillator (sound generator)
-        const oscillator = audioContext.createOscillator()
-        const gainNode = audioContext.createGain()
-        
-        // Connect oscillator to gain (volume control) to speakers
-        oscillator.connect(gainNode)
-        gainNode.connect(audioContext.destination)
-        
-        // Set sound properties
-        oscillator.frequency.setValueAtTime(freq, audioContext.currentTime)
-        oscillator.type = 'sine' // Smooth sine wave sound
-        
-        // Set volume envelope (fade in and out for pleasant sound)
-        gainNode.gain.setValueAtTime(0, audioContext.currentTime)
-        gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.1)
-        gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5)
-        
-        // Play the beep for 0.5 seconds
-        oscillator.start(audioContext.currentTime)
-        oscillator.stop(audioContext.currentTime + 0.5)
-      }, index * 600) // 600ms between each beep
-    })
-  }
+  // Get active task
+  const activeTask = tasks.find(t => t.id === session.activeTaskId) || null
 
-  // Function to convert seconds into MM:SS format for display
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60)              // Get whole minutes
-    const secs = seconds % 60                          // Get remaining seconds
-    // padStart ensures we always show 2 digits (e.g., "05" instead of "5")
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-  }
+  // Get mode durations from settings
+  const getModeTime = useCallback((modeType) => {
+    switch (modeType) {
+      case 'pomodoro': return settings.pomodoro * 60
+      case 'shortBreak': return settings.shortBreak * 60
+      case 'longBreak': return settings.longBreak * 60
+      default: return settings.pomodoro * 60
+    }
+  }, [settings])
 
-  // Function to handle switching between timer modes
-  const switchMode = (newMode) => {
-    setMode(newMode)                    // Update the current mode
-    setTimeLeft(modes[newMode])         // Set time to the new mode's duration
-    setIsRunning(false)                 // Stop the timer when switching modes
-  }
+  // Handle timer completion
+  const handleTimerComplete = useCallback(() => {
+    playAlarm(settings.alarmSound, settings.alarmVolume)
 
-  // Function to toggle between light and dark mode
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode)
-  }
+    if (mode === 'pomodoro') {
+      const newCompletedCount = session.completedPomodoros + 1
 
-  // useEffect hook to handle the countdown timer
-  // This runs whenever isRunning or timeLeft changes
+      // Update session
+      setSession(prev => ({
+        ...prev,
+        completedPomodoros: newCompletedCount
+      }))
+
+      // Update active task's completed pomodoros
+      if (session.activeTaskId) {
+        setTasks(prev => prev.map(task =>
+          task.id === session.activeTaskId
+            ? { ...task, completedPomodoros: task.completedPomodoros + 1 }
+            : task
+        ))
+      }
+
+      // Determine next break type
+      const shouldTakeLongBreak = newCompletedCount % settings.longBreakInterval === 0
+      const nextMode = shouldTakeLongBreak ? 'longBreak' : 'shortBreak'
+
+      setMode(nextMode)
+      setTimeLeft(getModeTime(nextMode))
+
+      if (settings.autoStartBreaks) {
+        setIsRunning(true)
+      }
+    } else {
+      // Break is over, switch to pomodoro
+      setMode('pomodoro')
+      setTimeLeft(getModeTime('pomodoro'))
+
+      if (settings.autoStartPomodoros) {
+        setIsRunning(true)
+      }
+    }
+  }, [mode, session, settings, getModeTime, setSession, setTasks])
+
+  // Timer effect
   useEffect(() => {
-    let interval = null                 // Variable to store the interval ID
-    
-    // If timer is running AND there's time left, start counting down
+    let interval = null
+
     if (isRunning && timeLeft > 0) {
       interval = setInterval(() => {
-        // Decrease timeLeft by 1 every second (1000ms)
-        setTimeLeft(timeLeft => timeLeft - 1)
+        setTimeLeft(prev => prev - 1)
       }, 1000)
-    } 
-    // If timer reaches 0, stop it and play alarm
-    else if (timeLeft === 0) {
+    } else if (timeLeft === 0 && isRunning) {
       setIsRunning(false)
-      playAlarm() // Play alarm sound when timer finishes
+      handleTimerComplete()
     }
 
-    // Cleanup function - clears the interval when component unmounts or dependencies change
-    // This prevents memory leaks
     return () => clearInterval(interval)
-  }, [isRunning, timeLeft])  // Dependencies: re-run effect when these values change
+  }, [isRunning, timeLeft, handleTimerComplete])
 
-  // Function to start or pause the timer
-  const toggleTimer = () => {
-    setIsRunning(!isRunning)  // Flip the running state (true becomes false, false becomes true)
+  // Update document title with timer
+  useEffect(() => {
+    const mins = Math.floor(timeLeft / 60)
+    const secs = timeLeft % 60
+    const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    const modeStr = mode === 'pomodoro' ? 'Focus' : mode === 'shortBreak' ? 'Break' : 'Long Break'
+    document.title = `${timeStr} - ${modeStr} | PomFlow`
+  }, [timeLeft, mode])
+
+  // Mode switch handler
+  const handleModeSwitch = (newMode) => {
+    setMode(newMode)
+    setTimeLeft(getModeTime(newMode))
+    setIsRunning(false)
   }
 
-  // Function to reset the timer back to the current mode's full duration
+  // Timer controls
+  const toggleTimer = () => setIsRunning(!isRunning)
   const resetTimer = () => {
-    setIsRunning(false)         // Stop the timer
-    setTimeLeft(modes[mode])    // Reset time to current mode's duration
+    setIsRunning(false)
+    setTimeLeft(getModeTime(mode))
+  }
+
+  // Task handlers
+  const handleTaskAdd = (task) => {
+    setTasks(prev => [...prev, task])
+  }
+
+  const handleTaskUpdate = (updatedTask) => {
+    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t))
+  }
+
+  const handleTaskDelete = (taskId) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+    if (session.activeTaskId === taskId) {
+      setSession(prev => ({ ...prev, activeTaskId: null }))
+    }
+  }
+
+  const handleTaskSelect = (taskId) => {
+    setSession(prev => ({
+      ...prev,
+      activeTaskId: prev.activeTaskId === taskId ? null : taskId
+    }))
+  }
+
+  // Settings handler
+  const handleSettingsSave = (newSettings) => {
+    setSettings(newSettings)
+    // Update timer if not running
+    if (!isRunning) {
+      setTimeLeft(newSettings[mode] * 60)
+    }
   }
 
   return (
-    // Main container - full screen height, background changes based on theme, centered content
-    <div className={`min-h-screen flex items-center justify-center ${
-      isDarkMode ? 'bg-gray-900' : 'bg-gray-100'
+    <div className={`min-h-screen transition-colors duration-500 ${
+      isDarkMode
+        ? 'bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800'
+        : 'bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600'
     }`}>
-      {/* Timer card - background changes based on theme, rounded corners, shadow, fixed width */}
-      <div className={`rounded-lg shadow-lg p-8 w-96 ${
-        isDarkMode ? 'bg-gray-800' : 'bg-white'
-      }`}>
-        
-        {/* Header with title and dark mode toggle */}
-        <div className="flex justify-between items-center mb-8">
-          {/* App title - text color changes based on theme */}
-          <h1 className={`text-3xl font-bold ${
-            isDarkMode ? 'text-white' : 'text-gray-800'
-          }`}>
-            Pomodoro Timer
-          </h1>
-          
-          {/* Dark mode toggle button */}
-          <button
-            onClick={toggleDarkMode}
-            className={`p-2 rounded-lg transition-colors ${
-              isDarkMode 
-                ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600' 
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-            }`}
-          >
-            {/* Show sun icon in dark mode, moon icon in light mode */}
-            {isDarkMode ? '☀️' : '🌙'}
-          </button>
-        </div>
-        
-        {/* Timer Display - large monospace font, color changes based on theme */}
-        <div className={`text-6xl font-mono text-center mb-8 ${
-          isDarkMode ? 'text-white' : 'text-gray-900'
-        }`}>
-          {formatTime(timeLeft)}
+      {/* Decorative background elements */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className={`absolute -top-40 -right-40 w-80 h-80 rounded-full blur-3xl ${
+          isDarkMode ? 'bg-emerald-900/20' : 'bg-white/10'
+        }`} />
+        <div className={`absolute -bottom-40 -left-40 w-80 h-80 rounded-full blur-3xl ${
+          isDarkMode ? 'bg-teal-900/20' : 'bg-white/10'
+        }`} />
+      </div>
+
+      <div className="relative max-w-2xl mx-auto px-4 py-8">
+        {/* Header */}
+        <Header
+          onSettingsOpen={() => setShowSettings(true)}
+          onDarkModeToggle={() => setIsDarkMode(!isDarkMode)}
+          isDarkMode={isDarkMode}
+        />
+
+        {/* Timer Section */}
+        <div className="py-8">
+          <Timer
+            mode={mode}
+            timeLeft={timeLeft}
+            totalTime={getModeTime(mode)}
+            isRunning={isRunning}
+            completedPomodoros={session.completedPomodoros}
+            activeTask={activeTask}
+            onModeSwitch={handleModeSwitch}
+            onToggleTimer={toggleTimer}
+            onReset={resetTimer}
+            isDarkMode={isDarkMode}
+          />
         </div>
 
-        {/* Mode Selection Buttons */}
-        <div className="flex gap-2 mb-8">
-          {/* Pomodoro button - red when active, themed gray when inactive */}
-          <button 
-            onClick={() => switchMode('pomodoro')}
-            className={`flex-1 py-2 px-4 rounded transition-colors ${
-              mode === 'pomodoro' 
-                ? 'bg-red-500 text-white' 
-                : isDarkMode 
-                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                  : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
-            }`}
-          >
-            Pomodoro
-          </button>
-          {/* Short Break button - green when active, themed gray when inactive */}
-          <button 
-            onClick={() => switchMode('shortBreak')}
-            className={`flex-1 py-2 px-4 rounded transition-colors ${
-              mode === 'shortBreak' 
-                ? 'bg-green-500 text-white' 
-                : isDarkMode 
-                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                  : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
-            }`}
-          >
-            Short Break
-          </button>
-          {/* Long Break button - blue when active, themed gray when inactive */}
-          <button 
-            onClick={() => switchMode('longBreak')}
-            className={`flex-1 py-2 px-4 rounded transition-colors ${
-              mode === 'longBreak' 
-                ? 'bg-blue-500 text-white' 
-                : isDarkMode 
-                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                  : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
-            }`}
-          >
-            Long Break
-          </button>
+        {/* Tasks Section */}
+        <div className={`rounded-2xl p-6 backdrop-blur-sm ${
+          isDarkMode ? 'bg-gray-800/50' : 'bg-black/10'
+        }`}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white">
+              Tasks
+            </h2>
+            <span className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-white/50'}`}>
+              {tasks.filter(t => !t.isCompleted).length} remaining
+            </span>
+          </div>
+          <TaskList
+            tasks={tasks}
+            activeTaskId={session.activeTaskId}
+            onTaskSelect={handleTaskSelect}
+            onTaskAdd={handleTaskAdd}
+            onTaskUpdate={handleTaskUpdate}
+            onTaskDelete={handleTaskDelete}
+            isDarkMode={isDarkMode}
+          />
         </div>
-        {/* Test Alarm Button */}
-        <div className="mt-4">
-          <button 
-            onClick={playAlarm}
-            className="w-full py-2 px-4 rounded bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition-colors"
-          >
-            🔔 Test Alarm
-          </button>
-        </div>
-        {/* Control Buttons */}
-        <div className="flex gap-4">
-          {/* Start/Pause button - changes text based on timer state */}
-          <button 
-            onClick={toggleTimer}
-            className="flex-1 py-3 px-6 rounded bg-green-500 text-white font-semibold hover:bg-green-600 transition-colors"
-          >
-            {isRunning ? 'PAUSE' : 'START'}
-          </button>
-          {/* Reset button - always available */}
-          <button 
-            onClick={resetTimer}
-            className={`flex-1 py-3 px-6 rounded font-semibold transition-colors ${
-              isDarkMode 
-                ? 'bg-gray-600 text-white hover:bg-gray-500' 
-                : 'bg-gray-500 text-white hover:bg-gray-600'
+
+        {/* Footer Actions */}
+        <div className="flex justify-center gap-4 mt-6">
+          {tasks.some(t => t.isCompleted) && (
+            <button
+              onClick={() => setTasks(prev => prev.filter(t => !t.isCompleted))}
+              className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+                isDarkMode
+                  ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                  : 'text-white/50 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              Clear completed
+            </button>
+          )}
+          <button
+            onClick={() => setSession({ completedPomodoros: 0, activeTaskId: null })}
+            className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
+              isDarkMode
+                ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                : 'text-white/50 hover:text-white hover:bg-white/10'
             }`}
           >
-            RESET
+            Reset session
           </button>
         </div>
       </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <Settings
+          settings={settings}
+          onSave={handleSettingsSave}
+          onClose={() => setShowSettings(false)}
+          isDarkMode={isDarkMode}
+        />
+      )}
     </div>
   )
 }
 
-// Export the component so it can be imported and used elsewhere
 export default App
