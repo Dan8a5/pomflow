@@ -4,6 +4,7 @@ import { TaskItem } from './TaskItem'
 export function TaskList({ tasks, activeTaskId, mode, onTaskSelect, onTaskAdd, onTaskUpdate, onTaskDelete, isDarkMode }) {
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [newTaskEstimate, setNewTaskEstimate] = useState(1)
+  const [newTaskNotes, setNewTaskNotes] = useState('')
   const [isAdding, setIsAdding] = useState(false)
 
   const handleAddTask = () => {
@@ -13,10 +14,12 @@ export function TaskList({ tasks, activeTaskId, mode, onTaskSelect, onTaskAdd, o
         title: newTaskTitle.trim(),
         estimatedPomodoros: newTaskEstimate,
         completedPomodoros: 0,
-        isCompleted: false
+        isCompleted: false,
+        notes: newTaskNotes.trim()
       })
       setNewTaskTitle('')
       setNewTaskEstimate(1)
+      setNewTaskNotes('')
       setIsAdding(false)
     }
   }
@@ -59,12 +62,23 @@ export function TaskList({ tasks, activeTaskId, mode, onTaskSelect, onTaskAdd, o
             value={newTaskTitle}
             onChange={(e) => setNewTaskTitle(e.target.value)}
             onKeyDown={handleKeyDown}
-            className={`w-full px-3 py-2 rounded-lg border-0 mb-3 ${
+            className={`w-full px-3 py-2 rounded-lg border-0 mb-2 ${
               isDarkMode
                 ? 'bg-gray-600 text-white placeholder-gray-400'
                 : 'bg-white/20 text-white placeholder-white/50'
             }`}
             autoFocus
+          />
+          <textarea
+            placeholder="Notes (optional)"
+            value={newTaskNotes}
+            onChange={(e) => setNewTaskNotes(e.target.value)}
+            rows={2}
+            className={`w-full px-3 py-2 rounded-lg border-0 mb-3 text-sm resize-none ${
+              isDarkMode
+                ? 'bg-gray-600 text-white placeholder-gray-400'
+                : 'bg-white/20 text-white placeholder-white/50'
+            }`}
           />
           <div className="flex items-center gap-3">
             <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-white/70'}`}>
@@ -92,6 +106,7 @@ export function TaskList({ tasks, activeTaskId, mode, onTaskSelect, onTaskAdd, o
               onClick={() => {
                 setNewTaskTitle('')
                 setNewTaskEstimate(1)
+                setNewTaskNotes('')
                 setIsAdding(false)
               }}
               className={`px-3 py-1.5 rounded-lg text-sm ${

@@ -6,13 +6,15 @@ export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, mode, i
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title)
   const [editEstimate, setEditEstimate] = useState(task.estimatedPomodoros)
+  const [editNotes, setEditNotes] = useState(task.notes || '')
 
   const handleSave = () => {
     if (editTitle.trim()) {
       onUpdate({
         ...task,
         title: editTitle.trim(),
-        estimatedPomodoros: editEstimate
+        estimatedPomodoros: editEstimate,
+        notes: editNotes.trim()
       })
       setIsEditing(false)
     }
@@ -41,12 +43,23 @@ export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, mode, i
           value={editTitle}
           onChange={(e) => setEditTitle(e.target.value)}
           onKeyDown={handleKeyDown}
-          className={`w-full px-3 py-2 rounded-lg border-0 mb-3 ${
+          className={`w-full px-3 py-2 rounded-lg border-0 mb-2 ${
             isDarkMode
               ? 'bg-gray-600 text-white placeholder-gray-400'
               : 'bg-white/20 text-white placeholder-white/50'
           }`}
           autoFocus
+        />
+        <textarea
+          placeholder="Notes (optional)"
+          value={editNotes}
+          onChange={(e) => setEditNotes(e.target.value)}
+          rows={2}
+          className={`w-full px-3 py-2 rounded-lg border-0 mb-3 text-sm resize-none ${
+            isDarkMode
+              ? 'bg-gray-600 text-white placeholder-gray-400'
+              : 'bg-white/20 text-white placeholder-white/50'
+          }`}
         />
         <div className="flex items-center gap-3">
           <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-white/70'}`}>
@@ -74,6 +87,7 @@ export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, mode, i
             onClick={() => {
               setEditTitle(task.title)
               setEditEstimate(task.estimatedPomodoros)
+              setEditNotes(task.notes || '')
               setIsEditing(false)
             }}
             className={`px-3 py-1.5 rounded-lg text-sm ${
@@ -123,12 +137,17 @@ export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, mode, i
           )}
         </button>
 
-        {/* Task title */}
-        <span className={`flex-1 ${
-          task.isCompleted ? 'line-through' : ''
-        } text-white font-medium`}>
-          {task.title}
-        </span>
+        {/* Task title + notes */}
+        <div className="flex-1 min-w-0">
+          <span className={`block ${task.isCompleted ? 'line-through' : ''} text-white font-medium`}>
+            {task.title}
+          </span>
+          {task.notes && (
+            <span className={`block text-xs mt-0.5 truncate ${isDarkMode ? 'text-gray-500' : 'text-white/40'}`}>
+              {task.notes}
+            </span>
+          )}
+        </div>
 
         {/* Pomodoro count */}
         <div className="flex items-center gap-1">
