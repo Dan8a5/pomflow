@@ -1,6 +1,6 @@
 import { getModeColors } from '../utils/modeColors'
 
-export function Header({ onSettingsOpen, onShortcutsOpen, onDarkModeToggle, isDarkMode, mode }) {
+export function Header({ onSettingsOpen, onShortcutsOpen, onDarkModeToggle, onSignInOpen, onSignOut, userEmail, isDarkMode, mode }) {
   const colors = getModeColors(mode)
 
   return (
@@ -19,6 +19,11 @@ export function Header({ onSettingsOpen, onShortcutsOpen, onDarkModeToggle, isDa
 
       {/* Actions */}
       <div className="flex items-center gap-2">
+        {userEmail && (
+          <span className={`text-xs hidden sm:block truncate max-w-[120px] ${isDarkMode ? 'text-gray-500' : 'text-white/50'}`}>
+            {userEmail}
+          </span>
+        )}
         <button
           onClick={onShortcutsOpen}
           className={`p-2.5 rounded-xl transition-all duration-200 ${
@@ -66,6 +71,33 @@ export function Header({ onSettingsOpen, onShortcutsOpen, onDarkModeToggle, isDa
             </svg>
           )}
         </button>
+        {onSignInOpen && (
+          <button
+            onClick={onSignInOpen}
+            className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+              isDarkMode
+                ? 'bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30'
+                : 'bg-white/15 text-white hover:bg-white/25'
+            }`}
+          >
+            Sign in
+          </button>
+        )}
+        {onSignOut && (
+          <button
+            onClick={onSignOut}
+            className={`p-2.5 rounded-xl transition-all duration-200 ${
+              isDarkMode
+                ? 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50 hover:text-red-400'
+                : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-red-300'
+            }`}
+            title="Sign out"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   )

@@ -4,7 +4,10 @@ import { Timer } from './components/Timer'
 import { TaskList } from './components/TaskList'
 import { Settings } from './components/Settings'
 import { KeyboardShortcuts } from './components/KeyboardShortcuts'
+import { AuthPage } from './components/AuthPage'
 import { useLocalStorage } from './hooks/useLocalStorage'
+import { useAuth } from './hooks/useAuth'
+import { supabase } from './lib/supabase'
 import { playAlarm } from './utils/sounds'
 import { getModeColors } from './utils/modeColors'
 
@@ -19,29 +22,91 @@ const DEFAULT_SETTINGS = {
   alarmVolume: 0.5
 }
 
-function App() {
-  // Persisted state
-  const [settings, setSettings] = useLocalStorage('pomflow-settings', DEFAULT_SETTINGS)
-  const [tasks, setTasks] = useLocalStorage('pomflow-tasks', [])
-  const [history, setHistory] = useLocalStorage('pomflow-history', [])
-  const [session, setSession] = useLocalStorage('pomflow-session', {
-    completedPomodoros: 0,
-    activeTaskId: null
-  })
+// --- Column name mappers ---
+const mapTask = (row) => ({
+  id: row.id,
+  title: row.title,
+  notes: row.notes ?? '',
+  estimatedPomodoros: row.estimated_pomodoros,
+  completedPomodoros: row.completed_pomodoros,
+  isCompleted: row.is_completed,
+})
 
-  // Local state
+const mapSettings = (row) => ({
+  pomodoro: row.pomodoro,
+  shortBreak: row.short_break,
+  longBreak: row.long_break,
+  autoStartBreaks: row.auto_start_breaks,
+  autoStartPomodoros: row.auto_start_pomodoros,
+  longBreakInterval: row.long_break_interval,
+  alarmSound: row.alarm_sound,
+  alarmVolume: row.alarm_volume,
+})
+
+const mapHistory = (row) => ({
+  id: row.id,
+  timestamp: row.timestamp,
+  taskTitle: row.task_title,
+})
+
+function App() {
+  const { user, loading: authLoading, signIn, signUp, signOut } = useAuth()
+
+  // Dark mode stays local (device preference)
+  const [isDarkMode, setIsDarkMode] = useLocalStorage('pomflow-darkmode', true)
+
+  // Cloud-backed state (populated on login)
+  const [tasks, setTasks] = useState([])
+  const [history, setHistory] = useState([])
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS)
+  const [session, setSession] = useState({ completedPomodoros: 0, activeTaskId: null })
+
+  // Local UI state
+  const [showAuth, setShowAuth] = useState(false)
   const [mode, setMode] = useState('pomodoro')
-  const [timeLeft, setTimeLeft] = useState(settings.pomodoro * 60)
+  const [timeLeft, setTimeLeft] = useState(DEFAULT_SETTINGS.pomodoro * 60)
   const [isRunning, setIsRunning] = useState(false)
-  const [isDarkMode, setIsDarkMode] = useLocalStorage('pomflow-darkmode', true) // Default to dark
   const [showSettings, setShowSettings] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
 
-  // Get active task
+  // Load all user data when user logs in
+  useEffect(() => {
+    if (!user) {
+      // Clear state on sign out
+      setTasks([])
+      setHistory([])
+      setSettings(DEFAULT_SETTINGS)
+      setSession({ completedPomodoros: 0, activeTaskId: null })
+      return
+    }
+
+    Promise.all([
+      supabase.from('tasks').select('*').eq('user_id', user.id).order('created_at'),
+      supabase.from('history').select('*').eq('user_id', user.id).order('timestamp'),
+      supabase.from('user_settings').select('*').eq('user_id', user.id).single(),
+      supabase.from('user_session').select('*').eq('user_id', user.id).single(),
+    ]).then(([tasksRes, historyRes, settingsRes, sessionRes]) => {
+      if (tasksRes.data) setTasks(tasksRes.data.map(mapTask))
+      if (historyRes.data) setHistory(historyRes.data.map(mapHistory))
+      if (settingsRes.data) {
+        const s = mapSettings(settingsRes.data)
+        setSettings(s)
+        setTimeLeft(s.pomodoro * 60)
+      }
+      if (sessionRes.data) {
+        setSession({
+          completedPomodoros: sessionRes.data.completed_pomodoros,
+          activeTaskId: sessionRes.data.active_task_id,
+        })
+      }
+    })
+  }, [user?.id])
+
+  // Derived
   const activeTask = tasks.find(t => t.id === session.activeTaskId) || null
   const modeColors = getModeColors(mode)
 
-  // Time budget: total remaining pomodoro time across active tasks
+  // Time budget
   const remainingPomodoros = tasks
     .filter(t => !t.isCompleted)
     .reduce((sum, t) => sum + Math.max(0, t.estimatedPomodoros - t.completedPomodoros), 0)
@@ -55,14 +120,14 @@ function App() {
     return `~${h}h ${m}min remaining`
   })()
 
-  // Today's session history (most recent first)
+  // Today's history
   const todayStr = new Date().toDateString()
   const todayHistory = history
     .filter(h => new Date(h.timestamp).toDateString() === todayStr)
     .slice()
     .reverse()
 
-  // Get mode durations from settings
+  // Mode durations
   const getModeTime = useCallback((modeType) => {
     switch (modeType) {
       case 'pomodoro': return settings.pomodoro * 60
@@ -72,11 +137,10 @@ function App() {
     }
   }, [settings])
 
-  // Handle timer completion
+  // Timer completion
   const handleTimerComplete = useCallback(() => {
     playAlarm(settings.alarmSound, settings.alarmVolume)
 
-    // Browser notification
     if ('Notification' in window && Notification.permission === 'granted') {
       const message = mode === 'pomodoro'
         ? 'Focus session complete! Time for a break.'
@@ -90,11 +154,15 @@ function App() {
     if (mode === 'pomodoro') {
       const newCompletedCount = session.completedPomodoros + 1
 
-      // Update session
-      setSession(prev => ({
-        ...prev,
-        completedPomodoros: newCompletedCount
-      }))
+      // Update session count (optimistic + sync)
+      setSession(prev => ({ ...prev, completedPomodoros: newCompletedCount }))
+      if (user) {
+        supabase.from('user_session').upsert({
+          user_id: user.id,
+          completed_pomodoros: newCompletedCount,
+          active_task_id: session.activeTaskId,
+        })
+      }
 
       // Update active task's completed pomodoros
       if (session.activeTaskId) {
@@ -103,50 +171,53 @@ function App() {
             ? { ...task, completedPomodoros: task.completedPomodoros + 1 }
             : task
         ))
+        const task = tasks.find(t => t.id === session.activeTaskId)
+        if (user && task) {
+          supabase.from('tasks').update({
+            completed_pomodoros: task.completedPomodoros + 1,
+          }).eq('id', session.activeTaskId)
+        }
       }
 
-      // Log completed session
+      // Log history entry
       const taskTitle = tasks.find(t => t.id === session.activeTaskId)?.title || null
-      setHistory(prev => [...prev, { id: crypto.randomUUID(), timestamp: Date.now(), taskTitle }])
+      const entry = { id: crypto.randomUUID(), timestamp: Date.now(), taskTitle }
+      setHistory(prev => [...prev, entry])
+      if (user) {
+        supabase.from('history').insert({
+          id: entry.id,
+          user_id: user.id,
+          timestamp: entry.timestamp,
+          task_title: entry.taskTitle,
+        })
+      }
 
-      // Determine next break type
+      // Advance mode
       const shouldTakeLongBreak = newCompletedCount % settings.longBreakInterval === 0
       const nextMode = shouldTakeLongBreak ? 'longBreak' : 'shortBreak'
-
       setMode(nextMode)
       setTimeLeft(getModeTime(nextMode))
-
-      if (settings.autoStartBreaks) {
-        setIsRunning(true)
-      }
+      if (settings.autoStartBreaks) setIsRunning(true)
     } else {
-      // Break is over, switch to pomodoro
       setMode('pomodoro')
       setTimeLeft(getModeTime('pomodoro'))
-
-      if (settings.autoStartPomodoros) {
-        setIsRunning(true)
-      }
+      if (settings.autoStartPomodoros) setIsRunning(true)
     }
-  }, [mode, session, settings, getModeTime, setSession, setTasks, tasks, setHistory])
+  }, [mode, session, settings, getModeTime, tasks, user])
 
-  // Timer effect
+  // Timer interval
   useEffect(() => {
     let interval = null
-
     if (isRunning && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft(prev => prev - 1)
-      }, 1000)
+      interval = setInterval(() => setTimeLeft(prev => prev - 1), 1000)
     } else if (timeLeft === 0 && isRunning) {
       setIsRunning(false)
       handleTimerComplete()
     }
-
     return () => clearInterval(interval)
   }, [isRunning, timeLeft, handleTimerComplete])
 
-  // Update document title with timer
+  // Document title
   useEffect(() => {
     const mins = Math.floor(timeLeft / 60)
     const secs = timeLeft % 60
@@ -155,7 +226,7 @@ function App() {
     document.title = `${timeStr} - ${modeStr} | PomFlow`
   }, [timeLeft, mode])
 
-  // Mode switch handler
+  // Mode switch
   const handleModeSwitch = (newMode) => {
     setMode(newMode)
     setTimeLeft(getModeTime(newMode))
@@ -174,30 +245,7 @@ function App() {
     setTimeLeft(getModeTime(mode))
   }
 
-  // Task handlers
-  const handleTaskAdd = (task) => {
-    setTasks(prev => [...prev, task])
-  }
-
-  const handleTaskUpdate = (updatedTask) => {
-    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t))
-  }
-
-  const handleTaskDelete = (taskId) => {
-    setTasks(prev => prev.filter(t => t.id !== taskId))
-    if (session.activeTaskId === taskId) {
-      setSession(prev => ({ ...prev, activeTaskId: null }))
-    }
-  }
-
-  const handleTaskSelect = (taskId) => {
-    setSession(prev => ({
-      ...prev,
-      activeTaskId: prev.activeTaskId === taskId ? null : taskId
-    }))
-  }
-
-  // Skip to next mode (no alarm / session counting)
+  // Skip mode
   const skipMode = useCallback(() => {
     if (mode === 'pomodoro') {
       const shouldTakeLongBreak = session.completedPomodoros % settings.longBreakInterval === 0
@@ -205,36 +253,107 @@ function App() {
     } else {
       handleModeSwitch('pomodoro')
     }
-  }, [mode, session.completedPomodoros, settings.longBreakInterval, handleModeSwitch])
+  }, [mode, session.completedPomodoros, settings.longBreakInterval])
 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e) => {
       const isTyping = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable
       if (isTyping) return
-
-      if (e.key === ' ' || e.code === 'Space') {
-        e.preventDefault()
-        toggleTimer()
-      } else if (e.key === 'r' || e.key === 'R') {
-        resetTimer()
-      } else if (e.key === 's' || e.key === 'S') {
-        skipMode()
-      } else if (e.key === '?') {
-        setShowShortcuts(prev => !prev)
-      }
+      if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); toggleTimer() }
+      else if (e.key === 'r' || e.key === 'R') resetTimer()
+      else if (e.key === 's' || e.key === 'S') skipMode()
+      else if (e.key === '?') setShowShortcuts(prev => !prev)
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [toggleTimer, resetTimer, skipMode])
 
+  // Task handlers
+  const handleTaskAdd = (task) => {
+    setTasks(prev => [...prev, task])
+    if (user) {
+      supabase.from('tasks').insert({
+        id: task.id,
+        user_id: user.id,
+        title: task.title,
+        notes: task.notes ?? '',
+        estimated_pomodoros: task.estimatedPomodoros,
+        completed_pomodoros: task.completedPomodoros,
+        is_completed: task.isCompleted,
+      })
+    }
+  }
+
+  const handleTaskUpdate = (updatedTask) => {
+    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t))
+    if (user) {
+      supabase.from('tasks').update({
+        title: updatedTask.title,
+        notes: updatedTask.notes ?? '',
+        estimated_pomodoros: updatedTask.estimatedPomodoros,
+        completed_pomodoros: updatedTask.completedPomodoros,
+        is_completed: updatedTask.isCompleted,
+      }).eq('id', updatedTask.id)
+    }
+  }
+
+  const handleTaskDelete = (taskId) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+    if (user) supabase.from('tasks').delete().eq('id', taskId)
+
+    if (session.activeTaskId === taskId) {
+      const newSession = { ...session, activeTaskId: null }
+      setSession(newSession)
+      if (user) {
+        supabase.from('user_session').upsert({
+          user_id: user.id,
+          completed_pomodoros: newSession.completedPomodoros,
+          active_task_id: null,
+        })
+      }
+    }
+  }
+
+  const handleTaskSelect = (taskId) => {
+    const newActiveId = session.activeTaskId === taskId ? null : taskId
+    setSession(prev => ({ ...prev, activeTaskId: newActiveId }))
+    if (user) {
+      supabase.from('user_session').upsert({
+        user_id: user.id,
+        completed_pomodoros: session.completedPomodoros,
+        active_task_id: newActiveId,
+      })
+    }
+  }
+
   // Settings handler
   const handleSettingsSave = (newSettings) => {
     setSettings(newSettings)
-    // Update timer if not running
-    if (!isRunning) {
-      setTimeLeft(newSettings[mode] * 60)
+    if (!isRunning) setTimeLeft(newSettings[mode] * 60)
+    if (user) {
+      supabase.from('user_settings').upsert({
+        user_id: user.id,
+        pomodoro: newSettings.pomodoro,
+        short_break: newSettings.shortBreak,
+        long_break: newSettings.longBreak,
+        auto_start_breaks: newSettings.autoStartBreaks,
+        auto_start_pomodoros: newSettings.autoStartPomodoros,
+        long_break_interval: newSettings.longBreakInterval,
+        alarm_sound: newSettings.alarmSound,
+        alarm_volume: newSettings.alarmVolume,
+      })
     }
+  }
+
+  // --- Render ---
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -254,16 +373,17 @@ function App() {
       </div>
 
       <div className="relative max-w-2xl mx-auto px-4 py-8">
-        {/* Header */}
         <Header
           onSettingsOpen={() => setShowSettings(true)}
           onShortcutsOpen={() => setShowShortcuts(prev => !prev)}
           onDarkModeToggle={() => setIsDarkMode(!isDarkMode)}
+          onSignInOpen={!user ? () => setShowAuth(true) : undefined}
+          onSignOut={user ? signOut : undefined}
+          userEmail={user?.user_metadata?.full_name?.split(' ')[0] || user?.email}
           isDarkMode={isDarkMode}
           mode={mode}
         />
 
-        {/* Timer Section */}
         <div className="py-8">
           <Timer
             mode={mode}
@@ -279,14 +399,11 @@ function App() {
           />
         </div>
 
-        {/* Tasks Section */}
         <div className={`rounded-2xl p-6 backdrop-blur-sm ${
           isDarkMode ? 'bg-gray-800/50' : 'bg-black/10'
         }`}>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">
-              Tasks
-            </h2>
+            <h2 className="text-lg font-semibold text-white">Tasks</h2>
             {timeBudget && (
               <span className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-white/50'}`}>
                 {timeBudget}
@@ -342,7 +459,15 @@ function App() {
         <div className="flex justify-center gap-4 mt-6">
           {tasks.some(t => t.isCompleted) && (
             <button
-              onClick={() => setTasks(prev => prev.filter(t => !t.isCompleted))}
+              onClick={() => {
+                setTasks(prev => prev.filter(t => !t.isCompleted))
+                if (user) {
+                  supabase.from('tasks')
+                    .delete()
+                    .eq('user_id', user.id)
+                    .eq('is_completed', true)
+                }
+              }}
               className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
                 isDarkMode
                   ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
@@ -353,7 +478,17 @@ function App() {
             </button>
           )}
           <button
-            onClick={() => setSession({ completedPomodoros: 0, activeTaskId: null })}
+            onClick={() => {
+              const reset = { completedPomodoros: 0, activeTaskId: null }
+              setSession(reset)
+              if (user) {
+                supabase.from('user_session').upsert({
+                  user_id: user.id,
+                  completed_pomodoros: 0,
+                  active_task_id: null,
+                })
+              }
+            }}
             className={`px-4 py-2 rounded-full text-sm transition-all duration-300 ${
               isDarkMode
                 ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
@@ -365,7 +500,6 @@ function App() {
         </div>
       </div>
 
-      {/* Settings Modal */}
       {showSettings && (
         <Settings
           settings={settings}
@@ -375,10 +509,18 @@ function App() {
         />
       )}
 
-      {/* Keyboard Shortcuts Modal */}
       {showShortcuts && (
         <KeyboardShortcuts
           onClose={() => setShowShortcuts(false)}
+          isDarkMode={isDarkMode}
+        />
+      )}
+
+      {showAuth && (
+        <AuthPage
+          onSignIn={signIn}
+          onSignUp={signUp}
+          onClose={() => setShowAuth(false)}
           isDarkMode={isDarkMode}
         />
       )}
