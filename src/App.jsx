@@ -40,6 +40,20 @@ function App() {
   const activeTask = tasks.find(t => t.id === session.activeTaskId) || null
   const modeColors = getModeColors(mode)
 
+  // Time budget: total remaining pomodoro time across active tasks
+  const remainingPomodoros = tasks
+    .filter(t => !t.isCompleted)
+    .reduce((sum, t) => sum + Math.max(0, t.estimatedPomodoros - t.completedPomodoros), 0)
+  const budgetMinutes = remainingPomodoros * settings.pomodoro
+  const timeBudget = (() => {
+    if (budgetMinutes === 0) return null
+    const h = Math.floor(budgetMinutes / 60)
+    const m = budgetMinutes % 60
+    if (h === 0) return `~${m}min remaining`
+    if (m === 0) return `~${h}h remaining`
+    return `~${h}h ${m}min remaining`
+  })()
+
   // Get mode durations from settings
   const getModeTime = useCallback((modeType) => {
     switch (modeType) {
@@ -261,9 +275,11 @@ function App() {
             <h2 className="text-lg font-semibold text-white">
               Tasks
             </h2>
-            <span className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-white/50'}`}>
-              {tasks.filter(t => !t.isCompleted).length} remaining
-            </span>
+            {timeBudget && (
+              <span className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-white/50'}`}>
+                {timeBudget}
+              </span>
+            )}
           </div>
           <TaskList
             tasks={tasks}
