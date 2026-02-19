@@ -23,6 +23,7 @@ function App() {
   // Persisted state
   const [settings, setSettings] = useLocalStorage('pomflow-settings', DEFAULT_SETTINGS)
   const [tasks, setTasks] = useLocalStorage('pomflow-tasks', [])
+  const [history, setHistory] = useLocalStorage('pomflow-history', [])
   const [session, setSession] = useLocalStorage('pomflow-session', {
     completedPomodoros: 0,
     activeTaskId: null
@@ -53,6 +54,13 @@ function App() {
     if (m === 0) return `~${h}h remaining`
     return `~${h}h ${m}min remaining`
   })()
+
+  // Today's session history (most recent first)
+  const todayStr = new Date().toDateString()
+  const todayHistory = history
+    .filter(h => new Date(h.timestamp).toDateString() === todayStr)
+    .slice()
+    .reverse()
 
   // Get mode durations from settings
   const getModeTime = useCallback((modeType) => {
@@ -97,6 +105,10 @@ function App() {
         ))
       }
 
+      // Log completed session
+      const taskTitle = tasks.find(t => t.id === session.activeTaskId)?.title || null
+      setHistory(prev => [...prev, { id: crypto.randomUUID(), timestamp: Date.now(), taskTitle }])
+
       // Determine next break type
       const shouldTakeLongBreak = newCompletedCount % settings.longBreakInterval === 0
       const nextMode = shouldTakeLongBreak ? 'longBreak' : 'shortBreak'
@@ -116,7 +128,7 @@ function App() {
         setIsRunning(true)
       }
     }
-  }, [mode, session, settings, getModeTime, setSession, setTasks])
+  }, [mode, session, settings, getModeTime, setSession, setTasks, tasks, setHistory])
 
   // Timer effect
   useEffect(() => {
@@ -292,6 +304,39 @@ function App() {
             isDarkMode={isDarkMode}
           />
         </div>
+
+        {/* History Section */}
+        {todayHistory.length > 0 && (
+          <div className={`mt-4 rounded-2xl p-6 backdrop-blur-sm ${
+            isDarkMode ? 'bg-gray-800/50' : 'bg-black/10'
+          }`}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white">Today's Sessions</h2>
+              <span className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-white/50'}`}>
+                {todayHistory.length} completed
+              </span>
+            </div>
+            <ul className="space-y-2">
+              {todayHistory.map(entry => (
+                <li key={entry.id} className="flex items-center gap-3">
+                  <span className={`text-xs font-mono tabular-nums w-16 shrink-0 ${isDarkMode ? 'text-gray-500' : 'text-white/50'}`}>
+                    {new Date(entry.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 bg-gradient-to-r ${getModeColors('pomodoro').gradient}`} />
+                  {entry.taskTitle ? (
+                    <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-white/80'}`}>
+                      {entry.taskTitle}
+                    </span>
+                  ) : (
+                    <span className={`text-sm italic ${isDarkMode ? 'text-gray-600' : 'text-white/30'}`}>
+                      No task
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Footer Actions */}
         <div className="flex justify-center gap-4 mt-6">
