@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { TaskItem } from './TaskItem'
 
-export function TaskList({ tasks, activeTaskId, mode, onTaskSelect, onTaskAdd, onTaskUpdate, onTaskDelete, isDarkMode }) {
+export function TaskList({ tasks, activeTaskId, mode, onTaskSelect, onTaskAdd, onTaskUpdate, onTaskDelete, onTaskReorder, isDarkMode }) {
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [newTaskEstimate, setNewTaskEstimate] = useState(1)
   const [newTaskNotes, setNewTaskNotes] = useState('')
@@ -34,24 +36,39 @@ export function TaskList({ tasks, activeTaskId, mode, onTaskSelect, onTaskAdd, o
     }
   }
 
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
   const activeTasks = tasks.filter(t => !t.isCompleted)
   const completedTasks = tasks.filter(t => t.isCompleted)
+
+  const handleDragEnd = ({ active, over }) => {
+    if (over && active.id !== over.id) {
+      const oldIndex = activeTasks.findIndex(t => t.id === active.id)
+      const newIndex = activeTasks.findIndex(t => t.id === over.id)
+      onTaskReorder(arrayMove(activeTasks, oldIndex, newIndex))
+    }
+  }
 
   return (
     <div className="space-y-2">
       {/* Task list */}
-      {activeTasks.map(task => (
-        <TaskItem
-          key={task.id}
-          task={task}
-          isActive={task.id === activeTaskId}
-          onSelect={onTaskSelect}
-          onUpdate={onTaskUpdate}
-          onDelete={onTaskDelete}
-          mode={mode}
-          isDarkMode={isDarkMode}
-        />
-      ))}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={activeTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+          {activeTasks.map(task => (
+            <TaskItem
+              key={task.id}
+              task={task}
+              isActive={task.id === activeTaskId}
+              onSelect={onTaskSelect}
+              onUpdate={onTaskUpdate}
+              onDelete={onTaskDelete}
+              mode={mode}
+              isDarkMode={isDarkMode}
+              isDraggable
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
 
       {/* Add task form */}
       {isAdding ? (

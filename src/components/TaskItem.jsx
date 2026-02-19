@@ -1,8 +1,21 @@
 import { useState } from 'react'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { getModeColors } from '../utils/modeColors'
 
-export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, mode, isDarkMode }) {
+export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, mode, isDarkMode, isDraggable }) {
   const colors = getModeColors(mode)
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: task.id,
+    disabled: !isDraggable,
+  })
+  const dragStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: isDragging ? 'relative' : undefined,
+    zIndex: isDragging ? 10 : undefined,
+  }
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title)
   const [editEstimate, setEditEstimate] = useState(task.estimatedPomodoros)
@@ -37,7 +50,7 @@ export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, mode, i
 
   if (isEditing) {
     return (
-      <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-gray-700/50' : 'bg-black/10'}`}>
+      <div ref={setNodeRef} className={`p-4 rounded-xl ${isDarkMode ? 'bg-gray-700/50' : 'bg-black/10'}`}>
         <input
           type="text"
           value={editTitle}
@@ -109,6 +122,8 @@ export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, mode, i
 
   return (
     <div
+      ref={setNodeRef}
+      style={dragStyle}
       onClick={() => onSelect(task.id)}
       className={`group p-4 rounded-xl cursor-pointer transition-all duration-200 ${
         isActive
@@ -119,6 +134,21 @@ export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, mode, i
       } ${task.isCompleted ? 'opacity-50' : ''}`}
     >
       <div className="flex items-center gap-4">
+        {/* Drag handle */}
+        {isDraggable && (
+          <button
+            {...listeners}
+            {...attributes}
+            onClick={(e) => e.stopPropagation()}
+            className={`cursor-grab active:cursor-grabbing p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity touch-none ${
+              isDarkMode ? 'text-gray-600 hover:text-gray-400' : 'text-white/20 hover:text-white/50'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+            </svg>
+          </button>
+        )}
         {/* Checkbox */}
         <button
           onClick={toggleComplete}

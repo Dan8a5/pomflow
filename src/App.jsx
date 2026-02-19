@@ -81,7 +81,7 @@ function App() {
     }
 
     Promise.all([
-      supabase.from('tasks').select('*').eq('user_id', user.id).order('created_at'),
+      supabase.from('tasks').select('*').eq('user_id', user.id).order('position', { nullsFirst: false }).order('created_at'),
       supabase.from('history').select('*').eq('user_id', user.id).order('timestamp'),
       supabase.from('user_settings').select('*').eq('user_id', user.id).single(),
       supabase.from('user_session').select('*').eq('user_id', user.id).single(),
@@ -273,6 +273,7 @@ function App() {
   const handleTaskAdd = (task) => {
     setTasks(prev => [...prev, task])
     if (user) {
+      const position = tasks.filter(t => !t.isCompleted).length
       supabase.from('tasks').insert({
         id: task.id,
         user_id: user.id,
@@ -281,6 +282,7 @@ function App() {
         estimated_pomodoros: task.estimatedPomodoros,
         completed_pomodoros: task.completedPomodoros,
         is_completed: task.isCompleted,
+        position,
       })
     }
   }
@@ -312,6 +314,15 @@ function App() {
           active_task_id: null,
         })
       }
+    }
+  }
+
+  const handleTaskReorder = (reorderedActiveTasks) => {
+    setTasks(prev => [...reorderedActiveTasks, ...prev.filter(t => t.isCompleted)])
+    if (user) {
+      reorderedActiveTasks.forEach((t, i) => {
+        supabase.from('tasks').update({ position: i }).eq('id', t.id)
+      })
     }
   }
 
@@ -418,6 +429,7 @@ function App() {
             onTaskAdd={handleTaskAdd}
             onTaskUpdate={handleTaskUpdate}
             onTaskDelete={handleTaskDelete}
+            onTaskReorder={handleTaskReorder}
             isDarkMode={isDarkMode}
           />
         </div>
