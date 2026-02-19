@@ -5,6 +5,7 @@ import { TaskList } from './components/TaskList'
 import { Settings } from './components/Settings'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { playAlarm } from './utils/sounds'
+import { getModeColors } from './utils/modeColors'
 
 const DEFAULT_SETTINGS = {
   pomodoro: 25,
@@ -35,6 +36,7 @@ function App() {
 
   // Get active task
   const activeTask = tasks.find(t => t.id === session.activeTaskId) || null
+  const modeColors = getModeColors(mode)
 
   // Get mode durations from settings
   const getModeTime = useCallback((modeType) => {
@@ -49,6 +51,17 @@ function App() {
   // Handle timer completion
   const handleTimerComplete = useCallback(() => {
     playAlarm(settings.alarmSound, settings.alarmVolume)
+
+    // Browser notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const message = mode === 'pomodoro'
+        ? 'Focus session complete! Time for a break.'
+        : mode === 'shortBreak'
+          ? "Break's over! Ready to focus?"
+          : "Long break's over! Ready to focus?"
+      const n = new Notification('PomFlow', { body: message })
+      setTimeout(() => n.close(), 5000)
+    }
 
     if (mode === 'pomodoro') {
       const newCompletedCount = session.completedPomodoros + 1
@@ -122,7 +135,12 @@ function App() {
   }
 
   // Timer controls
-  const toggleTimer = () => setIsRunning(!isRunning)
+  const toggleTimer = () => {
+    if (!isRunning && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+    setIsRunning(!isRunning)
+  }
   const resetTimer = () => {
     setIsRunning(false)
     setTimeLeft(getModeTime(mode))
@@ -164,7 +182,7 @@ function App() {
     <div className={`min-h-screen transition-colors duration-500 ${
       isDarkMode
         ? 'bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800'
-        : 'bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600'
+        : `bg-gradient-to-br ${modeColors.bgLight}`
     }`}>
       {/* Decorative background elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
@@ -182,6 +200,7 @@ function App() {
           onSettingsOpen={() => setShowSettings(true)}
           onDarkModeToggle={() => setIsDarkMode(!isDarkMode)}
           isDarkMode={isDarkMode}
+          mode={mode}
         />
 
         {/* Timer Section */}
@@ -215,6 +234,7 @@ function App() {
           <TaskList
             tasks={tasks}
             activeTaskId={session.activeTaskId}
+            mode={mode}
             onTaskSelect={handleTaskSelect}
             onTaskAdd={handleTaskAdd}
             onTaskUpdate={handleTaskUpdate}

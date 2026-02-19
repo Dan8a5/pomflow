@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { TaskItem } from './TaskItem'
 
-export function TaskList({ tasks, activeTaskId, onTaskSelect, onTaskAdd, onTaskUpdate, onTaskDelete, isDarkMode }) {
+export function TaskList({ tasks, activeTaskId, mode, onTaskSelect, onTaskAdd, onTaskUpdate, onTaskDelete, isDarkMode }) {
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [newTaskEstimate, setNewTaskEstimate] = useState(1)
   const [isAdding, setIsAdding] = useState(false)
@@ -45,6 +45,7 @@ export function TaskList({ tasks, activeTaskId, onTaskSelect, onTaskAdd, onTaskU
           onSelect={onTaskSelect}
           onUpdate={onTaskUpdate}
           onDelete={onTaskDelete}
+          mode={mode}
           isDarkMode={isDarkMode}
         />
       ))}

@@ -1,9 +1,13 @@
-export function Header({ onSettingsOpen, onDarkModeToggle, isDarkMode }) {
+import { getModeColors } from '../utils/modeColors'
+
+export function Header({ onSettingsOpen, onDarkModeToggle, isDarkMode, mode }) {
+  const colors = getModeColors(mode)
+
   return (
     <div className="flex justify-between items-center mb-4">
       {/* Logo */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+        <div className={`w-10 h-10 rounded-xl bg-gray-800/80 flex items-center justify-center shadow-lg ${colors.shadow} transition-shadow duration-500`}>
           <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>

@@ -1,3 +1,5 @@
+import { getModeColors } from '../utils/modeColors'
+
 export function Timer({
   mode,
   timeLeft,
@@ -10,6 +12,7 @@ export function Timer({
   onReset,
   isDarkMode
 }) {
+  const colors = getModeColors(mode)
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -23,9 +26,8 @@ export function Timer({
 
   const getModeStyles = (modeType, isActive) => {
     if (isActive) {
-      return isDarkMode
-        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/30'
-        : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30'
+      const c = getModeColors(modeType)
+      return `bg-gradient-to-r ${c.gradient} text-white shadow-lg ${c.shadow}`
     }
     return isDarkMode
       ? 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50 hover:text-gray-300'
@@ -85,9 +87,9 @@ export function Timer({
           />
           <defs>
             <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#10b981" />
-              <stop offset="50%" stopColor="#14b8a6" />
-              <stop offset="100%" stopColor="#06b6d4" />
+              <stop offset="0%" stopColor={colors.stops[0]} />
+              <stop offset="50%" stopColor={colors.stops[1]} />
+              <stop offset="100%" stopColor={colors.stops[2]} />
             </linearGradient>
           </defs>
         </svg>
@@ -136,7 +138,7 @@ export function Timer({
 
         <button
           onClick={onToggleTimer}
-          className="w-20 h-20 rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white font-semibold shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all duration-300 hover:scale-105 flex items-center justify-center"
+          className={`w-20 h-20 rounded-full bg-gradient-to-r ${colors.gradientVia} text-white font-semibold shadow-xl ${colors.shadow} transition-all duration-300 hover:scale-105 flex items-center justify-center`}
         >
           {isRunning ? (
             <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
@@ -166,7 +168,7 @@ export function Timer({
             key={i}
             className={`w-3 h-3 rounded-full transition-all duration-300 ${
               i < (completedPomodoros % 4)
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-500'
+                ? `bg-gradient-to-r ${colors.gradient}`
                 : isDarkMode
                   ? 'bg-gray-700'
                   : 'bg-white/20'

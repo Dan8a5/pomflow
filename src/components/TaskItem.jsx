@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { getModeColors } from '../utils/modeColors'
 
-export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, isDarkMode }) {
+export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, mode, isDarkMode }) {
+  const colors = getModeColors(mode)
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title)
   const [editEstimate, setEditEstimate] = useState(task.estimatedPomodoros)
@@ -96,7 +98,7 @@ export function TaskItem({ task, isActive, onSelect, onUpdate, onDelete, isDarkM
       onClick={() => onSelect(task.id)}
       className={`group p-4 rounded-xl cursor-pointer transition-all duration-200 ${
         isActive
-          ? 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 ring-2 ring-emerald-500/50'
+          ? `bg-gradient-to-r ${colors.bgActive} ring-2 ${colors.ring}`
           : isDarkMode
             ? 'bg-gray-700/30 hover:bg-gray-700/50'
             : 'bg-white/5 hover:bg-white/10'
