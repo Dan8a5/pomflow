@@ -1,6 +1,6 @@
 import { getModeColors } from '../utils/modeColors'
 
-export function Header({ onSettingsOpen, onDarkModeToggle, isDarkMode, mode }) {
+export function Header({ onSettingsOpen, onShortcutsOpen, onDarkModeToggle, isDarkMode, mode }) {
   const colors = getModeColors(mode)
 
   return (
@@ -19,6 +19,20 @@ export function Header({ onSettingsOpen, onDarkModeToggle, isDarkMode, mode }) {
 
       {/* Actions */}
       <div className="flex items-center gap-2">
+        <button
+          onClick={onShortcutsOpen}
+          className={`p-2.5 rounded-xl transition-all duration-200 ${
+            isDarkMode
+              ? 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50 hover:text-white'
+              : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+          }`}
+          title="Keyboard shortcuts (?)"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <rect x="2" y="6" width="20" height="13" rx="2" strokeWidth={2} />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M10 14h4" />
+          </svg>
+        </button>
         <button
           onClick={onSettingsOpen}
           className={`p-2.5 rounded-xl transition-all duration-200 ${

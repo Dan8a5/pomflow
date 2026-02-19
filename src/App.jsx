@@ -3,6 +3,7 @@ import { Header } from './components/Header'
 import { Timer } from './components/Timer'
 import { TaskList } from './components/TaskList'
 import { Settings } from './components/Settings'
+import { KeyboardShortcuts } from './components/KeyboardShortcuts'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { playAlarm } from './utils/sounds'
 import { getModeColors } from './utils/modeColors'
@@ -33,6 +34,7 @@ function App() {
   const [isRunning, setIsRunning] = useState(false)
   const [isDarkMode, setIsDarkMode] = useLocalStorage('pomflow-darkmode', true) // Default to dark
   const [showSettings, setShowSettings] = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
 
   // Get active task
   const activeTask = tasks.find(t => t.id === session.activeTaskId) || null
@@ -169,6 +171,37 @@ function App() {
     }))
   }
 
+  // Skip to next mode (no alarm / session counting)
+  const skipMode = useCallback(() => {
+    if (mode === 'pomodoro') {
+      const shouldTakeLongBreak = session.completedPomodoros % settings.longBreakInterval === 0
+      handleModeSwitch(shouldTakeLongBreak ? 'longBreak' : 'shortBreak')
+    } else {
+      handleModeSwitch('pomodoro')
+    }
+  }, [mode, session.completedPomodoros, settings.longBreakInterval, handleModeSwitch])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e) => {
+      const isTyping = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable
+      if (isTyping) return
+
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault()
+        toggleTimer()
+      } else if (e.key === 'r' || e.key === 'R') {
+        resetTimer()
+      } else if (e.key === 's' || e.key === 'S') {
+        skipMode()
+      } else if (e.key === '?') {
+        setShowShortcuts(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [toggleTimer, resetTimer, skipMode])
+
   // Settings handler
   const handleSettingsSave = (newSettings) => {
     setSettings(newSettings)
@@ -198,6 +231,7 @@ function App() {
         {/* Header */}
         <Header
           onSettingsOpen={() => setShowSettings(true)}
+          onShortcutsOpen={() => setShowShortcuts(prev => !prev)}
           onDarkModeToggle={() => setIsDarkMode(!isDarkMode)}
           isDarkMode={isDarkMode}
           mode={mode}
@@ -276,6 +310,14 @@ function App() {
           settings={settings}
           onSave={handleSettingsSave}
           onClose={() => setShowSettings(false)}
+          isDarkMode={isDarkMode}
+        />
+      )}
+
+      {/* Keyboard Shortcuts Modal */}
+      {showShortcuts && (
+        <KeyboardShortcuts
+          onClose={() => setShowShortcuts(false)}
           isDarkMode={isDarkMode}
         />
       )}
